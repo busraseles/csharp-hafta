@@ -26,14 +26,8 @@ while (true)
 
         case "3":
             Console.Write("Tamamlanacak numara: ");
-            if (int.TryParse(Console.ReadLine(), out int tamamlanacakId) && tamamlanacakId >= 0 && tamamlanacakId < gorevler.Count)
-            {
-                tamamlananlar.Add(tamamlanacakId);
-            }
-            else
-            {
-                Console.WriteLine("Geçersiz numara!");
-            }
+            int tamamlanacakId = int.Parse(Console.ReadLine()!);
+            tamamlananlar.Add(tamamlanacakId);
             break;
 
         case "4":

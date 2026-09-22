@@ -23,14 +23,17 @@ public class TodoItem
     }
 
     // JSON'dan geri yüklerken kullanılacak kurucu
-    [JsonConstructor]
-    public TodoItem(int id, string title, bool isDone, DateTime createdAt)
-    {
-        Id = id;
-        Title = title;
-        IsDone = isDone;
-        CreatedAt = createdAt;
-    }
+   [JsonConstructor]
+public TodoItem(int id, string title, bool isDone, DateTime createdAt)
+{
+    if (string.IsNullOrWhiteSpace(title))
+        throw new ArgumentException("Başlık boş olamaz.", nameof(title));
+
+    Id = id;
+    Title = title;
+    IsDone = isDone;
+    CreatedAt = createdAt;
+}
 
     public void Complete() => IsDone = true;
 }

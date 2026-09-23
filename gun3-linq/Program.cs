@@ -1,38 +1,50 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 
-// Tohum (seed): 42 ile başlatılan Random her zaman aynı sırayla aynı sayıları üretir.
-var rnd = new Random(42);
+// 1. Kısım: Ertelenmiş Çalışma (Deferred Execution) vs Anında Çalışma (Immediate Execution)
+var sayilar = new List<int> { 1, 2, 3 };
 
-string[] kategoriler = ["Kırtasiye", "Elektronik", "Gıda", "Temizlik", "Oyuncak"];
+// Where tanımlandığı anda ÇALIŞMAZ, yalnızca sorgu planı hazırlanır (Deferred Execution)
+var buyukler = sayilar.Where(s => s > 1);
 
-// 1'den 10.000'e kadar ürün listesi oluşturuluyor
-var urunler = Enumerable.Range(1, 10_000)
-    .Select(i => new Product(
-        Id: i,
-        Name: $"Ürün {i}",
-        Category: kategoriler[rnd.Next(kategoriler.Length)],
-        Price: Math.Round((decimal)(rnd.NextDouble() * 1000), 2),
-        Stock: rnd.Next(0, 50)))
-    .ToList();
+// Listeye 10 ekleniyor
+sayilar.Add(10);
 
-// JSON formatında diske yazıyoruz
-File.WriteAllText("urunler.json", JsonSerializer.Serialize(urunler));
-Console.WriteLine($"{urunler.Count} ürün yazıldı.");
+// string.Join sorguyu iterate ettiği (tükettiği) anda Where çalışır.
+// Dolayısıyla sonradan eklenen 10 da sorguya dahil olur.
+Console.WriteLine("1. Çıktı (buyukler): " + string.Join(", ", buyukler));
 
-// --- Rapor için Kontrol ve Ölçüm Kısmı ---
-var dosyaBilgisi = new FileInfo("urunler.json");
-double dosyaBoyutuKb = dosyaBilgisi.Length / 1024.0;
-Console.WriteLine($"\n--- Rapor Bilgileri ---");
-Console.WriteLine($"urunler.json Dosya Boyutu: {dosyaBoyutuKb:F2} KB ({dosyaBilgisi.Length} bayt)");
+// .ToList() çağrıldığı anda sorgu ANINDA çalışır ve sonuçlar bellekte yeni bir listeye kopyalanır (Immediate Execution)
+var buyuklerListe = sayilar.Where(s => s > 1).ToList();
 
-Console.WriteLine("\nİlk 3 Ürün:");
-foreach (var p in urunler.Take(3))
-{
-    Console.WriteLine($"Id: {p.Id} | Ad: {p.Name} | Kategori: {p.Category} | Fiyat: {p.Price} TL | Stok: {p.Stock}");
-}
+// Listeye 20 ekleniyor
+sayilar.Add(20);
 
-// Ürün modelimiz (DTO / Record)
+// buyuklerListe önceden sabitlendiği için 20 bu listeye yansımaz.
+Console.WriteLine("2. Çıktı (buyuklerListe): " + string.Join(", ", buyuklerListe));
+
+Console.WriteLine("--------------------------------------------------");
+
+// 2. Kısım: LINQ Filtresinin Çalışma Sayısı ve Sayacın Mantığı
+var jsonMetni = File.ReadAllText("urunler.json");
+var urunler = JsonSerializer.Deserialize<List<Product>>(jsonMetni)!;
+
+int sayac = 0;
+
+// u.Stock == 0 olan ürünleri arayan sorgu şablonu (Henüz çalışmadı, sayac = 0)
+var sorgu = urunler.Where(u => { sayac++; return u.Stock == 0; });
+
+// Count(): Tüm listeyi baştan sona (10.000 eleman) tarar.
+// sayac burada tam 10.000 artar.
+var adet = sorgu.Count();
+
+// First(): Baştan aramaya başlar, stoğu 0 olan İLK ürünü bulduğu anda durur.
+var ilk = sorgu.First();
+
+Console.WriteLine($"Stoğu 0 olan ilk ürün Id: {ilk.Id}, Ad: {ilk.Name}");
+Console.WriteLine($"Filtre {sayac} kez çalıştı.");
+
 public record Product(int Id, string Name, string Category, decimal Price, int Stock);

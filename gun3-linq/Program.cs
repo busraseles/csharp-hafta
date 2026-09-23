@@ -1,27 +1,36 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 
-// 1. Kısım: Ertelenmiş Çalışma (Deferred Execution) vs Anında Çalışma (Immediate Execution)
-var sayilar = new List<int> { 1, 2, 3 };
-var buyukler = sayilar.Where(s => s > 1);
-sayilar.Add(10);
-Console.WriteLine(string.Join(", ", buyukler));
-
-var buyuklerListe = sayilar.Where(s => s > 1).ToList();
-sayilar.Add(20);
-Console.WriteLine(string.Join(", ", buyuklerListe));
-
-// 2. Kısım: LINQ Filtresinin Çalışma Sayısı
+// urunler.json dosyasından ürünleri okuyoruz
 var urunler = JsonSerializer.Deserialize<List<Product>>(File.ReadAllText("urunler.json"))!;
 
-int sayac = 0;
-var sorgu = urunler.Where(u => { sayac++; return u.Stock == 0; });
-var adet = sorgu.Count();
-var ilk = sorgu.First();
+// Listeyi Dictionary'ye dönüştürüyoruz (Key: Id, Value: Product)
+var sozluk = urunler.ToDictionary(u => u.Id);
 
-Console.WriteLine($"Filtre {sayac} kez çalıştı.");
+// Sabit tohum (seed: 7) ile 1.000 adet aranacak Id listesi oluşturuyoruz
+var rnd2 = new Random(7);
+var arananlar = Enumerable.Range(0, 1_000).Select(_ => rnd2.Next(1, 10_001)).ToList();
+
+// 1. Ölçüm: List üzerinde FirstOrDefault ile arama (O(N))
+var sw = Stopwatch.StartNew();
+foreach (var id in arananlar)
+{
+    _ = urunler.FirstOrDefault(u => u.Id == id);
+}
+sw.Stop();
+Console.WriteLine($"List:       {sw.Elapsed.TotalMilliseconds:F2} ms");
+
+// 2. Ölçüm: Dictionary üzerinde TryGetValue ile arama (O(1))
+sw.Restart();
+foreach (var id in arananlar)
+{
+    sozluk.TryGetValue(id, out _);
+}
+sw.Stop();
+Console.WriteLine($"Dictionary: {sw.Elapsed.TotalMilliseconds:F2} ms");
 
 public record Product(int Id, string Name, string Category, decimal Price, int Stock);

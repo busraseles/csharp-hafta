@@ -509,3 +509,127 @@ Veri saklama ortamını bellekten dosyaya taşırken kullanıcı arayüzü kodla
 Yüksek seviyeli modüller (iş mantığı/UI), düşük seviyeli modüllere (veritabanı/dosya yazıcı) doğrudan bağımlı olmamalı; her iki grup da soyutlamalara (arayüzlere) bağımlı olmalıdır.
 
 **Örnek:** Projemizdeki `Program.cs`, doğrudan somut olan `JsonFileTodoRepository` sınıfına sıkı sıkıya bağlanmamıştır; `ITodoRepository` arayüzüne bağımlıdır. Verinin bellekte mi, JSON dosyasında mı yoksa yarın bir veritabanında mı tutulduğu `Program.cs`'in sorumluluğunda değildir.
+
+
+# C# Görevi - 3. Gün Raporu
+
+**Tarih:** 23 Eylül 2026
+**Hazırlayan:** Büşra Seleş
+**Proje Adı:** gun3-linq
+
+
+## Ürünler Dosyası Bilgisi
+
+**İkinci ürün:** Gıda
+**Üçüncü ürün:** Temizlik
+**Arkadaşımınkiyle aynı:** Evet
+
+---
+
+## 13. Adım: LINQ Sorguları
+
+Aynı tohum (seed: 42) kullanıldığı için üretilen veriler ve LINQ sorgu sonuçlarımız arkadaşımla birebir aynı çıkmıştır.
+
+| # | Soru | Sizin Cevabınız | Arkadaşınızın Cevabı |
+|---|------|------------------|------------------------|
+| 1 | Kaç ürünün stoğu 0? | 195 | 195 |
+| 2 | Her kategoride kaç ürün var? | Elektronik: 1960 adet<br>Gıda: 2029 adet<br>Kırtasiye: 1971 adet<br>Oyuncak: 1987 adet<br>Temizlik: 2053 adet | Temizlik: 2053<br>Gıda: 2029<br>Elektronik: 1960<br>Oyuncak: 1987<br>Kırtasiye: 1971 |
+| 3 | Her kategorinin ortalama fiyatı (iki basamak) | Elektronik: 499,09 TL<br>Gıda: 494,43 TL<br>Kırtasiye: 505,65 TL<br>Oyuncak: 509,44 TL<br>Temizlik: 500,29 TL | Temizlik: 500,29 TL<br>Gıda: 494,43 TL<br>Elektronik: 499,09 TL<br>Oyuncak: 509,44 TL<br>Kırtasiye: 505,65 TL |
+| 4 | En pahalı beş ürünün Id'leri | 5003, 6951, 6957, 4302, 448 | 5003, 6951, 6957, 4302, 448 |
+| 5 | Fiyatı 500 ile 600 TL arasında olan Elektronik ürün sayısı | 194 (Sınırlar dahil: 194, Hariç: 194) | 194 |
+| 6 | Toplam stok değeri (fiyat × stok) en yüksek kategori | Temizlik (25.558.657,24 TL) | Temizlik (25558657,24 TL) |
+
+### Kanıt (Kullanılan LINQ Kodları)
+
+1. **Soru:** `urunler.Count(u => u.Stock == 0);`
+2. **Soru:** `urunler.GroupBy(u => u.Category).Select(g => new { Kategori = g.Key, Adet = g.Count() });`
+3. **Soru:** `urunler.GroupBy(u => u.Category).Select(g => new { Kategori = g.Key, Ortalama = Math.Round(g.Average(u => u.Price), 2) });`
+4. **Soru:** `urunler.OrderByDescending(u => u.Price).Take(5).Select(u => u.Id);`
+5. **Soru:** `urunler.Count(u => u.Category == "Elektronik" && u.Price >= 500m && u.Price <= 600m);`
+6. **Soru:** `urunler.GroupBy(u => u.Category).Select(g => new { Kategori = g.Key, Toplam = g.Sum(u => u.Price * u.Stock) }).OrderByDescending(x => x.Toplam).First();`
+
+### Düşünün Sorusu Cevabı
+
+**5. Sorudaki Belirsizlik:** "500 ile 600 TL arası" ifadesi sınırların dahil mi (`>= 500 && <= 600`) yoksa hariç mi (`> 500 && < 600`) olduğunu netleştirmez. Veri setinde tam olarak 500,00 TL ya da 600,00 TL olan bir elektronik ürün bulunmadığı için iki koşulda da sonuç 194 çıkmıştır. Ancak gerçek iş gereksinimlerinde bu sınır koşulları uyuşmazlıklara yol açabileceğinden kural baştan netleştirilmelidir.
+
+---
+
+## 14. Adım: LINQ Ne Zaman Çalışır?
+
+| Kod Satırı | Tahmininiz | Gerçek Çıktı |
+|---|---|---|
+| `Console.WriteLine(string.Join(", ", buyukler));` | 2, 3 | 2, 3, 10 |
+| `Console.WriteLine(string.Join(", ", buyuklerListe));` | 2, 3, 10 | 2, 3, 10 |
+
+**Sayacın Değeri:** 10023
+
+**Neden tam olarak 10023?:**
+`sorgu.Count()` çağrısı tüm koleksiyonu tarayarak sayacı 10.000 artırdı. `sorgu.First()` çağrıldığında sorgu belleğe alınmadığı için en baştan tekrar çalıştı; stoğu 0 olan ilk ürünün Id'si 23 olduğu için 23 kontrol daha yapıp durdu. Toplamda filtre 10.000 + 23 = 10023 kez çalıştırıldı.
+
+### Düşünün Sorularının Cevapları
+
+1. **Veritabanına giden bir sorgu olsaydı Count() ve First() ayrı ayrı çağrıldığında veritabanına kaç kez gidilirdi?**
+   İki kez gidilirdi. İlkinde `SELECT COUNT(*)...`, ikincisinde `SELECT TOP 1...` SQL sorguları ayrı ayrı veritabanına iletilirdi.
+
+2. **Bir sorguyu neden bazen `.ToList()` ile sabitleriz?**
+   Ertelenmiş çalışma (deferred execution) her çağrıda sorgunun baştan çalışmasına neden olur. Verinin değişmeyeceği durumlarda sorguyu belleğe alarak gereksiz CPU ve veritabanı maliyetlerinin önüne geçmek için `.ToList()` ile sabitleriz.
+
+---
+
+## 15. Adım: Ölçüm, Liste mi Sözlük mü?
+
+Terminalde yapılan ölçüm sonuçları:
+
+| Çalıştırma | Mod | List (ms) | Dictionary (ms) |
+|---|---|---|---|
+| 1 | Debug | 21,61 ms | 0,06 ms |
+| 2 | Debug | 23,02 ms | 0,04 ms |
+| 3 | Debug | 21,77 ms | 0,04 ms |
+| 1 | Release | 18,70 ms | 0,05 ms |
+| 2 | Release | 18,38 ms | 0,05 ms |
+| 3 | Release | 18,48 ms | 0,05 ms |
+
+### Düşünün Sorularının Cevapları
+
+**Dictionary kaç kat hızlı?**
+- Debug modunda List ortalaması yaklaşık 22,13 ms iken Dictionary ortalaması 0,046 ms civarındadır; yani Dictionary yaklaşık 480 kat daha hızlıdır.
+- Release modunda List ortalaması 18,52 ms iken Dictionary 0,05 ms'dir; yani Dictionary yaklaşık 370 kat daha hızlıdır.
+- Bunun sebebi: `List.FirstOrDefault` her aramada baştan başlayıp tek tek gezdiği için O(N) karmaşıklığa sahiptir; Dictionary ise hash tablosu ve anahtar (Key) eşleşmesiyle çalıştığı için O(1) sürede doğrudan adrese ulaşır.
+
+**Ürün sayısı 10.000 yerine 1.000.000 yapılsaydı fark büyür mü, aynı mı kalır?**
+- Fark katlanarak büyür.
+- List araması doğrusal (O(N)) olduğundan veri 100 kat büyüdüğünde arama süresi de yaklaşık 100 kat artar (örneğin 18 ms yerine ~1800 ms sürer).
+- Dictionary araması ise sabit zamanlı (O(1)) olduğundan eleman sayısı 10 bin de olsa 1 milyon da olsa arama süresi neredeyse hiç değişmez (~0,05 ms bandında kalır). Dolayısıyla aralarındaki hız farkı binlerce kata çıkar.
+
+**13. adımdaki tablo aynı çıkarken bu tablo neden farklı çıkar?**
+- 13. adım mantıksal sorgulardan oluşur; aynı tohum (seed: 42) ve aynı kurallar kullanıldığı sürece matematiksel sonuç her bilgisayarda birebir aynı olmak zorundadır.
+- 15. adım ise milisaniye cinsinden donanımsal süre ölçümüdür. CPU frekansı, RAM hızı, çekirdek mimarisi, arka plandaki işletim sistemi yükü ve JIT derleyicisinin anlık çalışma performansı makineden makineye değiştiği için süreler ikimizde farklı çıkar.
+
+---
+
+## 16. Adım: async ve await
+
+### Derleyici Uyarısı
+
+- **Gözlem:** Terminalde herhangi bir derleyici uyarısı basılmadı; kod doğrudan derlenip çalıştı.
+- **Beklenen / Teorik Durum:** `async` olarak tanımlanmış bir metot gövdesinde `await` barındırmadığında .NET derleyicisinin normal şartlarda `CS1998` koduyla metodun senkron çalışacağını bildirmesi beklenir.
+
+### Ölçüm Tablosu
+
+| Deneme | Tahmininiz (ms) | Ölçülen (ms) |
+|---|---|---|
+| `Task.Delay`, sırayla | 3000 ms | 3028 ms |
+| `Task.Delay`, birlikte | 1000 ms | 1001 ms |
+| `Thread.Sleep`, sırayla | 3000 ms | 3035 ms |
+| `Thread.Sleep`, birlikte | 1000 ms | 3025 ms |
+
+### Düşünün Sorularının Cevapları
+
+1. **`Thread.Sleep` ile `WhenAll` neden artık bir işe yaramadı?**
+   `Task.WhenAll`, arka plana devredilmiş asenkron görevlerin tamamlanmasını koordine eder. Ancak `Thread.Sleep(ms)` çağrıldığı thread'i doğrudan kilitler ve dondurur. Metot asenkron olarak arka plana bırakılamadığı için tüm çağrılar aynı thread üzerinde sırayla koşmak zorunda kaldı; bu nedenle `WhenAll` kullanılmasına rağmen süre yaklaşık 3000 ms (3025 ms) sürdü.
+
+2. **Üçüncü çağrı ilk ikisinin sonucuna ihtiyaç duysaydı yine WhenAll kullanabilir miydiniz?**
+   Üçünü birden aynı `WhenAll` bloğu içerisine veremezdik. İlk iki bağımsız çağrı `await Task.WhenAll(kullaniciTask, siparislerTask)` şeklinde paralel başlatılıp sonuçları beklenmeli, ardından elde edilen bu veriler üçüncü çağrıya parametre olarak geçilerek `await SahteDbCagrisi(...)` şeklinde sıralı koşturulmalıdır.
+
+3. **Bir web sunucusunda, bir isteği beklerken thread'i bloklamak neden kötü?**
+   Web sunucularında gelen HTTP isteklerini karşılayan sınırlı sayıda iş parçacığı (Thread Pool) bulunur. Bir veritabanı sorgusu veya harici API cevabı beklenirken thread `Thread.Sleep` ile bloklanırsa, CPU hiçbir hesaplama yapmadığı halde thread rehin tutulur. Trafik arttığında thread havuzu tükenir (**Thread Starvation**) ve sunucu yeni gelen istekleri işleyemez hale gelir. `async/await` mimarisinde ise I/O işlemi sürerken thread anında havuza geri döner ve başka kullanıcıların isteklerine yanıt verebilir.

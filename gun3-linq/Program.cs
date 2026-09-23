@@ -1,36 +1,25 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 
-// urunler.json dosyasından ürünleri okuyoruz
-var urunler = JsonSerializer.Deserialize<List<Product>>(File.ReadAllText("urunler.json"))!;
+async Task<string> SahteDbCagrisi(string ad, int ms)
+{
+    Thread.Sleep(ms);
+    return ad;
+}
 
-// Listeyi Dictionary'ye dönüştürüyoruz (Key: Id, Value: Product)
-var sozluk = urunler.ToDictionary(u => u.Id);
-
-// Sabit tohum (seed: 7) ile 1.000 adet aranacak Id listesi oluşturuyoruz
-var rnd2 = new Random(7);
-var arananlar = Enumerable.Range(0, 1_000).Select(_ => rnd2.Next(1, 10_001)).ToList();
-
-// 1. Ölçüm: List üzerinde FirstOrDefault ile arama (O(N))
+// 1. Ölçüm: Sırayla
 var sw = Stopwatch.StartNew();
-foreach (var id in arananlar)
-{
-    _ = urunler.FirstOrDefault(u => u.Id == id);
-}
-sw.Stop();
-Console.WriteLine($"List:       {sw.Elapsed.TotalMilliseconds:F2} ms");
+await SahteDbCagrisi("kullanıcı", 1000);
+await SahteDbCagrisi("siparişler", 1000);
+await SahteDbCagrisi("ürünler", 1000);
+Console.WriteLine($"Thread.Sleep Sırayla: {sw.ElapsedMilliseconds} ms");
 
-// 2. Ölçüm: Dictionary üzerinde TryGetValue ile arama (O(1))
+// 2. Ölçüm: Birlikte
 sw.Restart();
-foreach (var id in arananlar)
-{
-    sozluk.TryGetValue(id, out _);
-}
-sw.Stop();
-Console.WriteLine($"Dictionary: {sw.Elapsed.TotalMilliseconds:F2} ms");
-
-public record Product(int Id, string Name, string Category, decimal Price, int Stock);
+await Task.WhenAll(
+    SahteDbCagrisi("kullanıcı", 1000),
+    SahteDbCagrisi("siparişler", 1000),
+    SahteDbCagrisi("ürünler", 1000));
+Console.WriteLine($"Thread.Sleep Birlikte: {sw.ElapsedMilliseconds} ms");

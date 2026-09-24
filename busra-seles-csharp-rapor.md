@@ -633,3 +633,490 @@ Terminalde yapılan ölçüm sonuçları:
 
 3. **Bir web sunucusunda, bir isteği beklerken thread'i bloklamak neden kötü?**
    Web sunucularında gelen HTTP isteklerini karşılayan sınırlı sayıda iş parçacığı (Thread Pool) bulunur. Bir veritabanı sorgusu veya harici API cevabı beklenirken thread `Thread.Sleep` ile bloklanırsa, CPU hiçbir hesaplama yapmadığı halde thread rehin tutulur. Trafik arttığında thread havuzu tükenir (**Thread Starvation**) ve sunucu yeni gelen istekleri işleyemez hale gelir. `async/await` mimarisinde ise I/O işlemi sürerken thread anında havuza geri döner ve başka kullanıcıların isteklerine yanıt verebilir.
+
+# C# Görevi - 4. Gün Raporu
+
+**Tarih:** 24 Eylül 2026
+**Hazırlayan:** Büşra Seleş
+**Proje Adı:** gun4-api
+
+# 17. Adım: API Projesi
+
+## 1. Uygulamanın Oluşturulması ve Çalıştırılması
+
+Aşağıdaki komutlar terminal üzerinden sırasıyla yürütülmüştür:
+
+```bash
+cd ..
+dotnet new webapi -n gun4-5-api --use-controllers
+cd gun4-5-api
+dotnet run
+```
+
+Uygulama başarıyla derlenmiş ve Kestrel web sunucusu yerel geliştirme portunda dinlemeye başlamıştır:
+```text
+Building...
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:5247
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+```
+
+---
+
+## 2. `Program.cs` Satır Satır Analizi
+
+ASP.NET Core mimarisinde uygulama yapılandırması iki ana fazdan oluşur: **Kayıt Fazı** (Servisler) ve **Çalışma Fazı** (Middleware Boru Hattı).
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+```
+* **Açıklama:** Uygulama ortamını, yapılandırma dosyalarını (`appsettings.json`, ortam değişkenleri vb.), loglama altyapısını ve Dependency Injection (DI) servis konteynerini başlatan kurucu (`builder`) nesnesini hazırlar.
+
+```csharp
+builder.Services.AddControllers();
+```
+* **Açıklama:** Controller tabanlı API yaklaşımını kullanacağımızı belirtir. Controller yapılarını, model doğrulama mekanizmalarını (Model Validation), JSON serileştiricilerini ve rota filtrelerini DI konteynerine servis olarak kaydeder.
+
+```csharp
+var app = builder.Build();
+```
+* **Açıklama:** Servis havuzunu dondurur ve uygulamanın çalışma zamanı örneğini (`app`) üretir. Bu satırdan sonra `builder.Services` koleksiyonuna yeni bir servis eklenemez.
+
+```csharp
+if (app.Environment.IsDevelopment())
+{
+    // Ortama bağlı geliştirme araçları (Swagger vb. varsa bu blokta çalışır)
+}
+
+app.UseHttpsRedirection();
+```
+* **Açıklama:** Güvenlik katmanıdır; HTTP üzerinden gelen istekleri otomatik olarak güvenli HTTPS protokolüne yönlendirir.
+
+```csharp
+app.UseAuthorization();
+```
+* **Açıklama:** Yetkilendirme middleware'idir. İsteğin geldiği kullanıcının erişmeye çalıştığı kaynağa yetkisinin olup olmadığını denetler.
+
+```csharp
+app.MapControllers();
+```
+* **Açıklama:** Gelen HTTP isteklerinin URL ve HTTP metoduna göre Controller sınıflarındaki `[Route]` ve `[HttpGet]`, `[HttpPost]` gibi niteliklerle eşleştirilmesini (Routing) sağlar.
+
+```csharp
+app.Run();
+```
+* **Açıklama:** Kestrel web sunucusunu gelen soket bağlantılarını dinlemek üzere başlatır ve uygulamayı canlı tutar.
+
+---
+
+## 3. İlk Test: WeatherForecast Endpoint İstek ve Yanıtı
+
+Hazır gelen `gun4-5-api.http` dosyası veya REST Client/curl aracılığıyla varsayılan endpoint'e test isteği atılmıştır:
+
+### Gönderilen İstek:
+```http
+GET http://localhost:5247/weatherforecast
+Accept: application/json
+```
+
+### Dönen Yanıt:
+* **HTTP Durum Kodu:** `200 OK`
+* **Content-Type:** `application/json; charset=utf-8`
+
+**Dönen JSON:**
+```json
+[
+  {
+    "date": "2026-09-25",
+    "temperatureC": 22,
+    "temperatureF": 71,
+    "summary": "Warm"
+  },
+  {
+    "date": "2026-09-26",
+    "temperatureC": 18,
+    "temperatureF": 64,
+    "summary": "Chilly"
+  },
+  {
+    "date": "2026-09-27",
+    "temperatureC": -2,
+    "temperatureF": 29,
+    "summary": "Freezing"
+  },
+  {
+    "date": "2026-09-28",
+    "temperatureC": 31,
+    "temperatureF": 87,
+    "summary": "Hot"
+  },
+  {
+    "date": "2026-09-29",
+    "temperatureC": 14,
+    "temperatureF": 57,
+    "summary": "Cool"
+  }
+]
+```
+
+---
+
+## 4. Düşünce ve Mimari Analiz
+
+### Soru: `builder.Build()` Satırından Önceki ve Sonraki Kodlar Arasındaki Fark Nedir? Neden İkiye Ayrılmıştır?
+
+* **Öncesi (Dependency Injection / Servis Kayıt Aşaması):**
+  `builder.Services` üzerinden yürütülür. Sisteme *"Hangi bağımlılıklar ve servisler kullanılacak?"* sorusunun cevabı verilir. Veritabanı bağlantıları, repository'ler, controller yapılandırmaları ve loglayıcılar burada konteynere bildirilir. Bu aşamada henüz canlı bir web sunucusu veya gelen bir istek yoktur; sadece kurallar ve tarifler kaydedilir.
+
+* **Sonrası (Middleware / İstek Boru Hattı Aşaması):**
+  `app.Use...` ve `app.Map...` metotları üzerinden yürütülür. Sisteme *"Gelen bir HTTP isteği sırasıyla hangi adımlardan geçerek controller'a ulaşacak ve dönerken hangi işlemler uygulanacak?"* sorusunun cevabı verilir.
+
+* **Ayrılma Sebebi (Design Pattern & Güvenlik):**
+  Bu yapı **Builder Pattern** gereğidir. Konteyner `builder.Build()` ile bir kez derlendikten sonra kilitlenir (immutable hâle gelir). Eğer çalışma anında dinamik olarak servis eklenip çıkarılabilseydi, çok kanallı (multi-threaded) ortamlarda yarış durumları (race conditions), bellek sızıntıları ve öngörülemez bağımlılık çözme hataları oluşurdu. Servis hazırlığı ile istek yürütme mantığının birbirinden kesin sınırlarla ayrılması mimarinin kararlılığını garanti altına alır.
+ 
+# 18. Adım: TodosController
+
+## Durum Kodları Tablosu
+
+| İstek | Beklenen Kod | Dönen Kod |
+|---|---|---|
+| `GET /api/todos` | 200 OK | 200 OK |
+| `POST /api/todos` | 201 Created | 201 Created |
+| `GET /api/todos/1` | 200 OK | 200 OK |
+| `GET /api/todos/999` | 404 Not Found | 404 Not Found |
+| `PUT /api/todos/1/complete` | 204 No Content | 204 No Content |
+| `DELETE /api/todos/1` | 204 No Content | 204 No Content |
+| `DELETE /api/todos/1 (ikinci kez)` | 404 Not Found | 404 Not Found |
+
+## Düşündüren Sorular ve Cevapları
+
+### POST 200 değil 201 dönüyor. Cevabın header'larına bakın: Location başlığında ne yazıyor, neden orada?
+
+`POST /api/todos` isteğinde yeni bir Todo oluşturduğumuz için cevap `201 Created` olarak dönüyor.
+
+Cevabın `Location` başlığında oluşturulan Todo'nun adresi bulunuyor. Örneğin:
+
+`http://localhost:5204/api/todos/1`
+
+Bunun amacı, yeni oluşturulan Todo'ya daha sonra bu adres üzerinden ulaşabilmek. Yani sistem bize hem kaynağın oluşturulduğunu söylüyor hem de yeni kaynağın nerede olduğunu gösteriyor.
+
+### Controller neden TodoItem değil de TodoResponse döndürüyor?
+
+Controller'ın `TodoItem` yerine `TodoResponse` döndürmesinin nedeni, içeride kullandığımız model ile dışarıya göstereceğimiz veriyi birbirinden ayırmak.
+
+- **İç yapıyı gizlemek:** `TodoItem` uygulamanın kendi içinde kullandığı modeldir. İçerideki bütün bilgileri dışarıya göstermek istemeyebiliriz.
+- **API'nin düzenli olması:** `TodoResponse` sadece istemciye göndermek istediğimiz bilgileri içerir.
+- **Sonradan değişiklik yapabilmek:** İleride `TodoItem` üzerinde değişiklik yaparsak API'nin dışarıya verdiği yapı bozulmamış olur.
+
+Kısaca, `TodoItem` daha çok uygulamanın iç tarafında, `TodoResponse` ise API'nin dışarıya verdiği cevapta kullanılır.
+
+# 19. Adım: Dependency Injection Ömürleri
+
+## Ölçüm Tablosu
+
+| **Ömür** | **"Oluşturuldu" kaç kez yazdı (tahmin)** | **(ölçülen)** | **GET'te eklediğiniz görev görünüyor mu (tahmin)** | **(ölçülen)** |
+|---|---:|---:|---|---|
+| **Transient** | 3 | 3 | Hayır | Hayır |
+| **Scoped** | 3 | 3 | Hayır | Hayır |
+| **Singleton** | 1 | 1 | Evet | Evet |
+
+## Düşündüren Soru ve Cevabı
+
+**Scoped'da eklediğiniz görev kayboldu. Ama rehber 6. bölümde DbContext'in Scoped kaydedildiğini, "her şeyi Singleton kaydetmenin" ise sık yapılan hata olduğunu söylüyor. Kurumun AtisCore projesinde de bütün DAL ve Manager sınıfları Scoped. Her istekte yeniden oluşturuluyorlarsa veriler neden kaybolmuyor? Veri nerede duruyor, nesnenin içinde mi? Bir de Singleton bir List'i aynı anda iki istek değiştirmeye çalışırsa ne olabilir?**
+
+### Cevap
+
+- **Verilerin kaybolmama sebebi:** `InMemoryTodoRepository` veriyi nesnenin kendi içindeki `List<T>` koleksiyonunda, yani RAM'de tuttuğu için nesne silinince veri de kayboldu. Ancak `DbContext`, DAL ve Manager sınıfları veriyi kendi içlerinde saklamaz. Bunlar veritabanı ile uygulama arasında birer köprü gibi çalışır. Veri veritabanında kalıcı olarak tutulduğu için bu sınıfların her istekte yeniden oluşturulup silinmesi veriyi kaybettirmez.
+
+- **Singleton `List` eşzamanlı değişirse ne olur:** C#'taki standart `List<T>` sınıfı **thread-safe (iş parçacığı güvenli)** değildir. İki istek aynı anda listeyi değiştirmeye çalışırsa **race condition (yarış durumu)** oluşabilir. Bunun sonucunda verilerde beklenmeyen değişiklikler veya veri kaybı yaşanabilir. Bazı işlemlerde çalışma zamanında hata da oluşabilir.
+
+### Kısaca
+
+Buradaki önemli nokta, **nesnenin ömrü ile verinin ömrünün aynı şey olmamasıdır.** `InMemoryTodoRepository` veriyi kendi içinde tuttuğu için nesne silinince veri de silinir. Gerçek uygulamalarda ise veri veritabanında tutulduğu için DAL, Manager ve `DbContext` nesneleri yeniden oluşturulsa bile veriler kaybolmaz.
+
+# 20. Adım: Validation ve Hata Yönetimi
+
+## 1. Beş POST İsteğinin Durum Kodları ve Hata Detayları
+
+- **`{ "title": "" }`**
+  - **Durum Kodu:** `400 Bad Request`
+  - **Errors:** `"Title": ["The Title field is required."]`
+
+- **`{ }`**
+  - **Durum Kodu:** `400 Bad Request`
+  - **Errors:** `"Title": ["The Title field is required."]`
+
+- **150 karakterlik başlık**
+  - **Durum Kodu:** `400 Bad Request`
+  - **Errors:** `"Title": ["The field Title must be a string with a maximum length of 100."]`
+
+- **`{ "title": 123 }`**
+  - **Durum Kodu:** `400 Bad Request`
+  - **Errors:** JSON deserialization / tür uyuşmazlığı hatası oluştu. Yani gönderilen `123` değeri `string` olarak beklenen `Title` alanına uygun olmadığı için istek kabul edilmedi.
+
+- **`{ "baslik": "Süt al" }`**
+  - **Durum Kodu:** `400 Bad Request`
+  - **Errors:** Gönderilen `baslik` alanı modeldeki `Title` alanıyla eşleşmediği için `Title` boş kaldı ve `"The Title field is required."` hatası oluştu.
+
+---
+
+## 2. `[Required]` Niteliği Silindikten Sonraki Durum
+
+### Tahmin
+
+İlk bakışta `[Required]` silindiğinde iki isteğin de doğrulamayı geçip `200` veya `201` döndüreceği düşünülebilir. Ancak iki istek aynı şekilde davranmadı.
+
+### Yeni Durumlar
+
+**1. İstek: `{ "title": "" }`**
+
+- **Durum Kodu:** `500 Internal Server Error`
+- **Terminal çıktısı:** `System.ArgumentException: Başlık boş olamaz.`
+- Bunun nedeni, boş string değerinin API doğrulamasından geçmesine rağmen `TodoItem` oluşturulurken constructor içindeki kontrolün exception fırlatmasıdır.
+
+**2. İstek: `{ }`**
+
+- **Durum Kodu:** `400 Bad Request`
+- **Hata:** `"errors": { "Title": ["The Title field is required."] }`
+
+### Değişmeyen İstek Neden Hâlâ "Zorunlu" Diyor?
+
+C# projesinde **Nullable Reference Types** açık olduğu için `string Title` tanımı `?` işareti olmadan kullanıldığında non-nullable bir referans türü olarak kabul edilir.
+
+ASP.NET Core, `[Required]` yazılmamış olsa bile non-nullable alanlar için örtük (**implicit required**) bir doğrulama kuralı uygulayabilir.
+
+`{}` gönderildiğinde `Title` değeri `null` kalır. Bu nedenle ASP.NET Core bunu geçersiz kabul edip `400 Bad Request` döndürür.
+
+Fakat `{ "title": "" }` gönderildiğinde değer `null` değildir. Değer boş bir stringdir (`""`). Bu nedenle null kontrolünü geçebilir. Daha sonra `TodoItem` constructor'ındaki kontrol çalışır ve `Başlık boş olamaz` exception'ı oluşarak `500 Internal Server Error` döner.
+
+---
+
+## 3. Değerlendirme Soruları
+
+### Bu Bir Tekrar mı, Farklı İşler mi Görüyor?
+
+Bence bu tamamen gereksiz bir kod tekrarı değildir. Burada **savunmacı programlama (Defensive Programming)** yaklaşımı kullanılmıştır.
+
+İki farklı katmanda kontrol yapılmaktadır:
+
+- **DTO / API doğrulaması:** Sistemin dış kapısını korur. İstemciden gelen verilerin doğru formatta ve kurallara uygun olup olmadığını kontrol eder.
+- **Entity Constructor doğrulaması:** Domain tarafını korur. `TodoItem` nesnesinin geçersiz bir veriyle oluşturulmasını engeller.
+
+Yani API katmanındaki kontrol atlanmış olsa bile domain tarafındaki kontrol sistemi korumaya devam eder.
+
+### Hangisi 400, Hangisi 500 Döndürdü?
+
+- **400 Bad Request:** API katmanındaki validation mekanizmasından kaynaklandı.
+- **500 Internal Server Error:** `TodoItem` constructor'ında fırlatılan exception nedeniyle oluştu.
+
+### Hangisi Kimin Hatasıdır?
+
+- **400 Bad Request:** İstemcinin hatasıdır. İstemci API'nin beklediği formata uygun olmayan veya eksik bir veri göndermiştir.
+- **500 Internal Server Error:** Sunucu tarafındaki bir problemdir. API katmanı hatalı veriyi domain nesnesine kadar ulaştırmış ve exception oluşmuştur.
+
+Bu yüzden normalde istemciden gelebilecek hataların mümkün olduğunca API'nin validation katmanında yakalanıp `400 Bad Request` olarak döndürülmesi daha doğru olur.
+
+## Kısaca
+
+Bu adımda API'ye gönderilen verilerin nasıl kontrol edildiğini gördüm. `[Required]` sadece bir kontrol katmanı değil, ASP.NET Core'un non-nullable özellikler için yaptığı örtük doğrulamanın da önemli olduğunu gördüm. Ayrıca `400` ile `500` arasındaki farkı ve hatanın istemciden mi yoksa sunucudan mı kaynaklandığını daha net anladım.
+
+# 21. Adım: Log ve Ayarlar
+
+## 1. Warning'e çekince log satırınız görünüyor mu?
+
+`appsettings.Development.json` dosyasında `Logging:LogLevel:Default` değerini `"Warning"` yaptığımda, `LogInformation` ile oluşturduğum **“Görev eklendi”** log satırı terminalde görünmedi.
+
+Bunun nedeni, `Information` seviyesindeki logların `Warning` seviyesinde gösterilmemesidir.
+
+---
+
+## 2. Aynı ayarı yalnızca `appsettings.json`'da yapsaydınız ne olurdu?
+
+`appsettings.json` dosyasında `Default` değerini `"Warning"` yaptığımda, uygulama Development ortamında çalıştığı için `appsettings.Development.json` dosyasındaki ayar da dikkate alınır.
+
+Benim testimde:
+
+```text
+appsettings.json → Warning
+appsettings.Development.json → Information
+```
+
+şeklinde değerler vardı. Bu durumda Information logunun terminalde göründüğünü gördüm.
+
+---
+
+## 3. İki dosya çelişince hangisi kazanıyor?
+
+İki dosyada aynı ayar farklı değerlerde olduğunda ve uygulama Development ortamında çalıştığında, **`appsettings.Development.json` içindeki ayar geçerli oluyor.**
+
+Benim testimde:
+
+```text
+appsettings.json → Warning
+appsettings.Development.json → Information
+```
+
+olmasına rağmen:
+
+```text
+Görev eklendi: 1 Conflict testi
+```
+
+logunu gördüm. Böylece Development dosyasındaki `Information` ayarının geçerli olduğunu gözlemledim.
+
+---
+
+## 4. Uygulamanın Development ortamında çalıştığını nereden biliyor?
+
+Uygulamanın hangi ortamda çalıştığını `Properties/launchSettings.json` dosyasından kontrol ettim.
+
+Bu dosyada `ASPNETCORE_ENVIRONMENT` değerinin `Development` olduğunu gördüm. Bu nedenle uygulamanın Development ortamında çalıştığını ve `appsettings.Development.json` dosyasının kullanıldığını anladım.
+
+---
+
+## 5. Log satırında neden `$"Görev eklendi: {item.Id}"` yazmadık da `{Id}` diye bir şablon kullandık?
+
+Burada **structured logging** kullandık.
+
+Şu şekilde yazmak yerine:
+
+```csharp
+_logger.LogInformation($"Görev eklendi: {item.Id}");
+```
+
+şu şekilde yazdık:
+
+```csharp
+_logger.LogInformation("Görev eklendi: {Id} {Title}", item.Id, item.Title);
+```
+
+Structured logging sayesinde `Id` ve `Title` değerleri log sistemi tarafından ayrı alanlar olarak tutulabilir. Böylece logları daha sonra aramak, filtrelemek ve analiz etmek daha kolay olur.
+
+---
+
+## 6. Görev eklendiğinde hangi log satırını kullandık?
+
+`Create` metodunda görev eklendikten sonra şu log satırını kullandık:
+
+```csharp
+_logger.LogInformation("Görev eklendi: {Id} {Title}", item.Id, item.Title);
+```
+
+Görev eklediğimde terminalde örneğin:
+
+```text
+Görev eklendi: 1 Conflict testi
+```
+
+şeklinde bir çıktı gördüm.
+
+# Dördüncü Günün Sonu
+
+## 1. Bir HTTP isteği uygulamanıza girdiği andan controller'a ulaşana kadar neler oluyor?
+
+HTTP isteği önce ASP.NET Core uygulamasına gelir. İstek, uygulamanın HTTP pipeline'ından geçer. Gerekli middleware'ler çalıştıktan sonra routing sayesinde isteğin hangi controller ve action metoduna gideceği belirlenir. Daha sonra ilgili controller oluşturulur ve istek controller'daki uygun metoda gönderilir.
+
+Örneğin:
+
+```text
+HTTP isteği
+    ↓
+ASP.NET Core
+    ↓
+Middleware'ler
+    ↓
+Routing
+    ↓
+TodosController
+    ↓
+İlgili action metodu
+```
+
+---
+
+## 2. Controller'daki ITodoRepository'yi kim oluşturuyor, siz hiç new demediniz?
+
+`ITodoRepository` nesnesini controller içinde kendimiz `new` ile oluşturmadık. Bunun nedeni **Dependency Injection (DI)** kullanmamızdır.
+
+Repository'yi `Program.cs` içerisinde servis olarak kaydettik. ASP.NET Core, controller'ın constructor'ında `ITodoRepository` istediğini görünce kayıtlı olan repository nesnesini kendisi oluşturup controller'a verir.
+
+Yani:
+
+```text
+Program.cs
+    ↓
+ITodoRepository kaydı
+    ↓
+ASP.NET Core DI Container
+    ↓
+TodosController constructor
+    ↓
+ITodoRepository
+```
+
+Bu sayede nesneleri kendimiz oluşturmak yerine ASP.NET Core'un Dependency Injection sisteminden yararlanmış olduk.
+
+---
+
+## 3. Transient, Scoped, Singleton: 19. adımdaki tablonuzla anlatın.
+
+Dependency Injection'da servislerin ne kadar süre yaşayacağını belirleyen üç temel kullanım şekli vardır.
+
+| Tür | Yaşam süresi | Açıklama |
+|---|---|---|
+| Transient | Her istendiğinde yeni | Servis her istendiğinde yeni bir nesne oluşturulur. |
+| Scoped | Her HTTP isteği boyunca | Aynı HTTP isteği içerisinde aynı nesne kullanılır. Yeni istekte yeni nesne oluşturulur. |
+| Singleton | Uygulama boyunca tek | Uygulama çalıştığı sürece aynı nesne kullanılır. |
+
+Kısaca:
+
+```text
+Transient → Her kullanımda yeni
+Scoped    → Her HTTP isteğinde bir tane
+Singleton → Uygulama boyunca bir tane
+```
+
+---
+
+## 4. 400 ile 500 arasındaki fark ne, hangisi kimin hatası?
+
+`400` seviyesindeki hatalar genellikle **istemci (client) tarafından gönderilen istekte bir problem olduğunu** gösterir.
+
+Örneğin eksik veya geçersiz veri gönderilmesi sonucunda `400 Bad Request` alınabilir.
+
+`500` seviyesindeki hatalar ise genellikle **sunucu (server) tarafında beklenmeyen bir problem olduğunu** gösterir.
+
+Kısaca:
+
+```text
+400 → İstekte / istemci tarafında problem
+500 → Sunucu tarafında problem
+```
+
+Örneğin bizim API'mizde `title` alanının geçersiz olması 400 seviyesinde bir hata oluşturabilir.
+
+---
+
+## 5. Neden entity yerine bir response modeli dönüyoruz?
+
+Entity'yi doğrudan dışarıya vermek yerine `TodoResponse` gibi ayrı bir response modeli kullanıyoruz.
+
+Örneğin:
+
+```csharp
+public record TodoResponse(int Id, string Title, bool IsDone);
+```
+
+Bunun önemli bir nedeni, API'nin dışarıya **hangi verileri göstereceğini kontrol edebilmesidir**.
+
+Entity'nin içinde ileride veritabanına ait veya kullanıcıya gösterilmemesi gereken başka alanlar olabilir. Entity'yi doğrudan döndürürsek bu alanları istemeden dışarı açabiliriz.
+
+Response modeli kullanarak:
+
+- Dışarıya gönderilecek alanları seçebiliriz.
+- Entity ile API çıktısını birbirinden ayırabiliriz.
+- Entity değişse bile API cevabını aynı tutabiliriz.
+- Gereksiz veya hassas alanların dışarı çıkmasını önleyebiliriz.
+
+Bu nedenle controller'da entity yerine `TodoResponse` döndürmek daha kontrollü bir yaklaşımdır.

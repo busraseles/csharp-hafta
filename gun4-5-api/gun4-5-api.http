@@ -1,0 +1,27 @@
+@api = http://localhost:5204
+
+### Tümünü getir
+GET {{api}}/api/todos
+
+### Ekle
+POST {{api}}/api/todos
+Content-Type: application/json
+
+{
+  "title": "Süt al"
+}
+
+### Birini getir
+GET {{api}}/api/todos/1
+
+### Olmayanı getir (404 Testi)
+GET {{api}}/api/todos/999
+
+### Tamamla (204 No Content)
+PUT {{api}}/api/todos/1/complete
+
+### Sil (204 No Content)
+DELETE {{api}}/api/todos/1
+
+### Tekrar Sil (404 Testi)
+DELETE {{api}}/api/todos/1

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Mvc;
 
@@ -62,9 +63,55 @@ public class TodosController : ControllerBase
 
         return NoContent(); // 204 No Content
     }
-}
+    [HttpPost("{id:int}/adimlar")]
+    public async Task<ActionResult<AdimlarResponse>> Adimlar(
+    int id,
+    [FromServices] LmStudioClient ai,
+    CancellationToken ct)
+    {
+        var item = _repo.GetById(id);
 
-public record CreateTodoRequest([Required, MaxLength(100)] string Title);
+        if (item is null)
+            return NotFound();
+
+        var sw = Stopwatch.StartNew();
+
+        try
+        {
+            var sonuc = await ai.SorAsync(
+                "Verilen görevi en fazla 3 kısa adıma böl. Yalnızca numaralı adımları yaz.",
+                item.Title,
+                ct);
+
+            sw.Stop();
+
+            return Ok(new AdimlarResponse(
+                item.Title,
+                sonuc.Content,
+                sonuc.TotalTokens,
+                sw.ElapsedMilliseconds));
+        }
+        catch (HttpRequestException ex)
+        {
+            sw.Stop();
+
+            _logger.LogError(ex, "LM Studio'ya bağlanılamadı.");
+
+            return StatusCode(503, new
+            {
+                mesaj = "Yapay zeka servisine şu anda ulaşılamıyor."
+            });
+        }
+    }
+}
+public record AdimlarResponse(
+    string Gorev,
+    string Adimlar,
+    int Token,
+    long Milisaniye);
+
+public record CreateTodoRequest(
+    [Required, MaxLength(100)] string Title);
 
 public record TodoResponse(int Id, string Title, bool IsDone)
 {

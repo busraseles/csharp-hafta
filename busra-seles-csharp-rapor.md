@@ -518,11 +518,13 @@ Yüksek seviyeli modüller (iş mantığı/UI), düşük seviyeli modüllere (ve
 **Proje Adı:** gun3-linq
 
 
-## Ürünler Dosyası Bilgisi
+## 12. Adım: Aynı Veriyi Üretmek
 
-**İkinci ürün:** Gıda
-**Üçüncü ürün:** Temizlik
-**Arkadaşımınkiyle aynı:** Evet
+Bu adımda `gun3-linq` projesinde `Random(42)` kullanarak 10.000 ürün oluşturdum. Ürünlerin Id, ad, kategori, fiyat ve stok bilgilerini `urunler.json` dosyasına kaydettim. Aynı tohum ve aynı işlem sırası kullanıldığında aynı ürün verilerinin üretildiğini gördüm.
+
+**Soru:** `urunler.json` kaç KB? İkinci ve üçüncü ürünün kategorisi ve fiyatı ne? Arkadaşınızınkiyle aynı mı?
+
+**Cevap:** `urunler.json` dosyası **880 KB**. İkinci ürün **Gıda** kategorisinde ve fiyatı **168,43 TL**. Üçüncü ürün **Temizlik** kategorisinde ve fiyatı **512,92 TL**. Sonuçlarım arkadaşımla aynı çıktı.
 
 ---
 
